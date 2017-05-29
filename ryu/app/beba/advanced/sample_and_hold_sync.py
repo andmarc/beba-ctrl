@@ -7,10 +7,13 @@ import ryu.ofproto.ofproto_v1_3 as ofproto
 import ryu.ofproto.ofproto_v1_3_parser as ofparser
 import ryu.ofproto.beba_v1_0 as bebaproto
 import ryu.ofproto.beba_v1_0_parser as bebaparser
+import re
+import pickle
 
 LOG = logging.getLogger('app.beba.sample_and_hold')
 devices = []
 
+stats_out = []
 debug_on = True
 overflow_prevention = False
 
@@ -18,9 +21,9 @@ overflow_prevention = False
 class BebaSampleAndHold(app_manager.RyuApp):
     def __init__(self, *args, **kwargs):
         super(BebaSampleAndHold, self).__init__(*args, **kwargs)
-        self.sample_interval = 1
-        self.time_interval = 8*1000
-        self.hh_threshold = 231598525*0.01
+        self.sample_interval = 400
+        self.time_interval = 12*1000
+        self.hh_threshold = 2849057
         self.port = ofproto.OFPP_FLOOD
 
     @staticmethod
@@ -254,7 +257,7 @@ class BebaSampleAndHold(app_manager.RyuApp):
 ########################################################################################################################
 
         match = ofparser.OFPMatch(state=2, condition0=0, condition1=1,condition2=0)
-        actions = [bebaparser.OFPExpActionSetState(state=2, table_id=table_id),
+        actions = [bebaparser.OFPExpActionSetState(state=1, table_id=table_id),
                    save_ts,
                    save_counter,
                    update_local_endtime__action,
@@ -277,7 +280,7 @@ class BebaSampleAndHold(app_manager.RyuApp):
         self.add_flow(datapath=datapath, table_id=table_id, priority=0, match=match, actions=actions)
 
         match = ofparser.OFPMatch(state=2, condition0=1,condition2=0)
-        actions = [bebaparser.OFPExpActionSetState(state=2, table_id=table_id),
+        actions = [bebaparser.OFPExpActionSetState(state=1, table_id=table_id),
                    save_ts,
                    save_counter,
                    update_global_endtime__action,
@@ -400,11 +403,26 @@ class BebaSampleAndHold(app_manager.RyuApp):
                 if state_entry_list == []:
                     print "No key for this state"
                 else:
+                    s = dict()
                     for state_entry in state_entry_list:
+                        '''
                         print 'State :', state_entry.entry.state
                         print 'Key   :', bebaparser.state_entry_key_to_str(state_entry)
                         print 'FDV   :', state_entry.entry.flow_data_var
-                        print '*********'
+                        print '*********' 
+                        '''
+
+                        k_string = bebaparser.state_entry_key_to_str(state_entry)
+                        k = re.findall('\"(.*?)\"',k_string)
+                        k.insert(2,'T' if 'tcp' in k_string else 'U')
+                        k[3]=int(k[3])
+                        k[4]=int(k[4])
+                        s[tuple(k)]= state_entry.entry.flow_data_var[:4]
+
+                    stats_out.append(s)
+                    print('Saving with pickle...')
+                    with open("stats_out.dat", "wb") as fh:
+                        pickle.dump(stats_out,fh)
 
 ########################################################################################################################
 
@@ -427,5 +445,5 @@ def ask_for_state(t, state):
         counter += 1
 
 state = 2
-t = Thread(target=ask_for_state, args=(8, state))
+t = Thread(target=ask_for_state, args=(12, state))
 t.start()
