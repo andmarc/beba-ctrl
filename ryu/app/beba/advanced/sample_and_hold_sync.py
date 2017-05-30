@@ -237,15 +237,7 @@ class BebaSampleAndHold(app_manager.RyuApp):
                    init_counter_action]
         self.add_flow(datapath=datapath, table_id=table_id, priority=0, match=match, actions=actions)
 
-        match = ofparser.OFPMatch(state=1, condition0=1, condition1=1, condition2=1)
-        actions = [save_ts,
-                   save_counter,
-                   update_global_endtime__action,
-                   update_local_endtime__action,
-                   init_counter_action]
-        self.add_flow(datapath=datapath, table_id=table_id, priority=0, match=match, actions=actions)
-
-        match = ofparser.OFPMatch(state=1, condition0=1, condition1=0, condition2=1)
+        match = ofparser.OFPMatch(state=1, condition0=1, condition2=1)
         actions = [bebaparser.OFPExpActionSetState(state=2, table_id=table_id),
                    save_ts,
                    save_counter,
