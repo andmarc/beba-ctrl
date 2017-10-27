@@ -1,9 +1,9 @@
 import ryu.ofproto.ofproto_v1_3 as ofproto
 import ryu.ofproto.ofproto_v1_3_parser as ofparser
-import pickle
+import pickle,time
 
 
-def add_flow(datapath, table_id, priority, match, actions, inst2=None):
+def add_flow(datapath, table_id, priority, match, actions, inst2=None, hard_timeout=0):
     actions = filter(lambda x: x is not None, actions)
     if len(actions) > 0:
         inst = [ofparser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
@@ -12,7 +12,7 @@ def add_flow(datapath, table_id, priority, match, actions, inst2=None):
     if inst2 is not None:
         inst += inst2
     mod = ofparser.OFPFlowMod(datapath=datapath, table_id=table_id,
-                              priority=priority, match=match, instructions=inst)
+                              priority=priority, match=match, instructions=inst, hard_timeout=hard_timeout)
     datapath.send_msg(mod)
 
 def dpid_from_name(name):
@@ -24,3 +24,6 @@ def get_from_mininet():
     topo = mininet_data[0]
     addresses = mininet_data[1]
     return topo, addresses
+
+def get_switch_time():
+    return int(time.time()*1000) & 0xFFFFFFFF

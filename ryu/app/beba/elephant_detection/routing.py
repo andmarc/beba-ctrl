@@ -1,5 +1,5 @@
 import networkx as nx
-from utils import add_flow, dpid_from_name, get_from_mininet
+from utils import add_flow, dpid_from_name, get_from_mininet, get_switch_time
 
 
 class Routing():
@@ -11,6 +11,7 @@ class Routing():
         self.next_table_id = next_table_id
         self.time_interval = time_interval
         self.congestion_thresh = congestion_thresh
+        self.time_interval_np = round(time_interval * 6.5)
 
         self.switch_num = len([node for node in self.topo.nodes() if 's' in node])
         self.link_ep_map = dict()
@@ -32,8 +33,17 @@ class Routing():
             elif mode == "REM":
                 topo[previous_hop][hop]["C_res"]-= elephant_size
 
+    def remove_expired_path(self):
+        current_time = get_switch_time()
+        keys = self.ep_path_map.keys()
+        for elephant_ep in keys:
+            ts = self.ep_path_map[elephant_ep][2]
+            if current_time > ts:
+                path_old= self.ep_path_map[elephant_ep][0]
+                self.update_link_ep_map(path_old, "REM")
+                del self.ep_path_map[elephant_ep]
 
-    def apply_routing(self, path, topo, priority):
+    def apply_routing(self, path, topo, priority, hard_timeout=0):
         src_ip = self.addresses[path[0]]["ip"]
         dst_ip = self.addresses[path[-1]]["ip"]
         for previous_hop, hop, next_hop in list(zip(path, path[1:], path[2:])):
@@ -44,12 +54,14 @@ class Routing():
                                                            ipv4_dst=dst_ip,
                                                            in_port=topo[hop][previous_hop]['port']),
                           [parser.OFPActionOutput(topo[hop][next_hop]['port'])],
-                          [parser.OFPInstructionGotoTable(self.next_table_id)])
+                          [parser.OFPInstructionGotoTable(self.next_table_id)],
+                     hard_timeout=hard_timeout)
         #self.link_ep_map.setdefault((hop, next_hop), [])
         #self.link_ep_map[(hop, next_hop)].append((path[0], path[-1]))
 
     def initialize_routing(self):
         if len(self.devices) == self.switch_num:
+            print("Installing default routes")
             hosts = [node for node in self.topo.nodes() if 'h' in node]
             for h1 in hosts:
                 for h2 in hosts:
@@ -68,9 +80,10 @@ class Routing():
         #print(flow_stats_history[-1])
         if dpid not in flow_stats_history[-1]:
             return None
-        flows = dict()
-        for el in flow_stats_history[-1][dpid].values():
-            flows.update(el)
+        #flows = dict()
+        #for el in flow_stats_history[-1][dpid].values():
+        #    flows.update(el)
+        flows = flow_stats_history[-1][dpid]
 
         temp_map = [(el[0], el[1])
                     for el in self.link_ep_map[link]
@@ -80,16 +93,45 @@ class Routing():
                         self.addresses[el[1]]["ip"])
                        for el in temp_map]
         max_value = 0
-        for flow in flows:
+
+        """for flow in flows:
             if (flow[0],flow[1]) in link_ip_map and flows[flow][3] > max_value:
                 max_value = flows[flow][3]
-                elephant = temp_map[link_ip_map.index((flow[0],flow[1]))]
+                elephant = temp_map[link_ip_map.index((flow[0],flow[1]))]"""
+
+        n_stats = len(flow_stats_history)
+        for flow in flows:
+            if (flow[0], flow[1]) in link_ip_map:
+                ts_end_new = flows[flow][0]
+                count_new = flows[flow][1]
+                ts_end_old = flows[flow][2]
+                count_ew =  flows[flow][3]
+                offset_time_windows = int((ts_end_old - self.start_ts)/(self.time_interval*1000))
+                try:
+                    count_old = flow_stats_history[offset_time_windows][dpid][flow][1]
+                    real_rate = (count_new + count_ew - count_old)/\
+                                ((n_stats-offset_time_windows)* self.time_interval)
+                except:
+                    real_rate = (count_new + count_ew)/\
+                                (self.start_ts/1000+n_stats*self.time_interval + (self.time_interval-0.1) - ts_end_old/1000)
+                value = real_rate * self.time_interval
+                #print(flow, value)
+                if value > max_value:
+                    max_value = value
+                    elephant = temp_map[link_ip_map.index((flow[0], flow[1]))]
+
         return (elephant,max_value) if max_value else None
 
 
-    def react(self, port_stats_history, flow_stats_history):
+    def react(self, port_stats_history, flow_stats_history, start_ts):
+        print
+        print "Link occupation report"
+        print "Link threshold is set to %s%%" % self.congestion_thresh
+
+        self.start_ts = start_ts
+        self.remove_expired_path()
         topo1 = self.topo.copy()
-        new_forwarding_list = set()
+        new_forwarding_list = list()
         for link in sorted(self.topo.edges()):
             if 'h' not in link[0] and 'h' not in link[1]:
                 print
@@ -105,16 +147,17 @@ class Routing():
                     link_ep = (link[0], link[1]) if occ == tx_occ else (link[1], link[0])
                     res = self.get_elephant_by_link(flow_stats_history, link_ep)
                     if res is not None:
-                        new_forwarding_list.add(res)
+                        new_forwarding_list.append(res)
                 topo1[link[0]][link[1]]["C_res"] = (100 - tx_occ)/100 * (
                 self.topo[link[0]][link[1]]['bw'] * self.time_interval * 1e6) / 8
 
 
         if new_forwarding_list:
+            print("Reroute phase")
             new_forwarding_list = sorted(new_forwarding_list, key=lambda x: x[1], reverse=True)
-            #print "lista forwarding", new_forwarding_list
             #print topo1.edges(data=True)
             for el in new_forwarding_list:
+                print "Attempting to reroute:", el[0], "with size", el[1]
                 elephant_ep, elephant_size = el
                 #print elephant_ep,elephant_size
                 topo2 = topo1.copy()
@@ -133,9 +176,9 @@ class Routing():
 
                     self.update_link_ep_map(path, "ADD")
                     self.update_capacity(path, topo1, "ADD", elephant_size)
-                    self.apply_routing(path, topo1, priority_old+1)
-                    print 'path %s->%s' % (elephant_ep[0], elephant_ep[1]), path
-                    print "Installed with priority", priority_old+1
-                    self.ep_path_map[elephant_ep] = (path, priority_old+1)
+                    self.apply_routing(path, topo1, priority_old+1, self.time_interval_np)
+                    print 'Rerouted path %s->%s' % (elephant_ep[0], elephant_ep[1]), path
+                    print "Route installed with priority", priority_old+1
+                    self.ep_path_map[elephant_ep] = (path, priority_old+1, get_switch_time()+self.time_interval_np*1000)
                 except nx.NetworkXNoPath:
-                    print "No path between %s and %s" % (elephant_ep[0], elephant_ep[1])
+                    print "Can't reroute: No path between %s and %s" % (elephant_ep[0], elephant_ep[1])

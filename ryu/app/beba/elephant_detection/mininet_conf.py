@@ -6,19 +6,24 @@ from mininet.node import UserSwitch, RemoteController
 from beba import BebaHost, BebaSwitchDbg
 import os,time,pickle
 import networkx as nx
+import sys
 
-C_list = [('h1','s1',10),
-          ('h2', 's1', 10),
-          ('h3', 's3', 20),
-          ('s1', 's2', 10),
-          ('s1', 's3', 5),
-          ('s2', 's3', 10)]
 
-endpoint_list = [("h1","h3","TCP", 6*10**6 ),
-                 ("h2","h3","TCP", 1*10**6)]
+C_list = list()
+endpoint_list = list()
+export_data = list()
 
-export_data = []
 
+def load_topo_info(filename):
+    next_structure_flag = False
+    with open(filename, "r") as fh:
+        for line in fh:
+            if not line.strip():
+                next_structure_flag=True
+            elif next_structure_flag:
+                endpoint_list.append(tuple(line.split()))
+            else:
+                C_list.append(tuple(line.split()))
 
 def is_switch(s):
     return s[0] == "s"
@@ -34,10 +39,10 @@ class MyTopo( Topo ):
         for node in nodes_set:
             self.addSwitch(node) if is_switch(node) else self.addHost(node)
         for el in C_list:
-            self.addLink(el[0], el[1], bw=el[2], max_queue_size=10, use_htb=True)
+            self.addLink(el[0], el[1], bw=int(el[2]), max_queue_size=10, use_htb=True)
             port_tuple = self.port(el[0], el[1])
-            G.add_edge(el[0], el[1], bw=el[2], port=port_tuple[0])
-            G.add_edge(el[1], el[0], bw= el[2], port= port_tuple[1])
+            G.add_edge(el[0], el[1], bw=int(el[2]), port=port_tuple[0])
+            G.add_edge(el[1], el[0], bw= int(el[2]), port= port_tuple[1])
         export_data.append(G)
         #print("nodi",G.nodes())
         #print("links", G.edges())
@@ -56,7 +61,7 @@ def get_hosts_info(net,topo):
 def build_iperf_cmd(proto, bw, i, srv_add):
     base_port = 3000
     conn_time = 40
-    s= "iperf3 "
+    s= "iperf3 " if proto == "TCP" else "iperf "
 
     if srv_add != "":
         s+= "-c" + " " + srv_add + " " + "-t" + " " + str(conn_time) + " "
@@ -72,7 +77,10 @@ def build_iperf_cmd(proto, bw, i, srv_add):
     print(s)
     return s
 
+
 if __name__ == '__main__':
+    assert len(sys.argv) == 2
+    load_topo_info(sys.argv[1])
 
     is_nat_active = False
     debug_mode = False

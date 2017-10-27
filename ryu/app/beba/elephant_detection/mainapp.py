@@ -12,6 +12,7 @@ from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER, set_ev_cls
 from ryu.lib import hub
+from utils import get_switch_time
 
 
 class BebaSampleAndHold(app_manager.RyuApp):
@@ -39,12 +40,12 @@ class BebaSampleAndHold(app_manager.RyuApp):
 
         self.CountTCPflows = flows_counter.FlowsCounter(table_id = self.map_proto_tableid["tcp"],
                                                         ip_proto = self.ip_proto_values["tcp"],
-                                                        time_interval = self.time_interval,
+                                                        time_interval = self.time_interval-0.1,
                                                         hh_threshold = self.hh_threshold)
 
         self.CountUDPflows = flows_counter.FlowsCounter(table_id=self.map_proto_tableid["udp"],
                                                         ip_proto=self.ip_proto_values["udp"],
-                                                        time_interval=self.time_interval,
+                                                        time_interval=self.time_interval-0.1,
                                                         hh_threshold=self.hh_threshold)
 
         self.log = logging.getLogger('app.beba.sample_and_hold')
@@ -70,7 +71,8 @@ class BebaSampleAndHold(app_manager.RyuApp):
     def check_stats_rv(self):
         if self.counter_rv_port_stats == len(self.devices) and self.counter_rv_flow_stats == 2*len(self.devices):
             #print(self.port_stats_history, self.flow_stats_history)
-            self.Routing.react(self.port_stats_history, self.flow_stats_history)
+            self.log.info("Stats response received")
+            self.Routing.react(self.port_stats_history, self.flow_stats_history, self.starts_ts)
 
     # State Sync: Parse the response
     @set_ev_cls(ofp_event.EventOFPExperimenterStatsReply, MAIN_DISPATCHER)
@@ -88,14 +90,15 @@ class BebaSampleAndHold(app_manager.RyuApp):
                     self.flow_stats_history[-1].setdefault(dpid, dict())
                     flows_extracted = dict()
                     for state_entry in state_entry_list:
-                        table_id = state_entry.table_id
+                        #table_id = state_entry.table_id
                         flow_label_string = bebaparser.state_entry_key_to_str(state_entry)
                         flow_label = re.findall('\"(.*?)\"',flow_label_string)
                         flow_label.insert(2,'T' if 'tcp' in flow_label_string else 'U')
                         flow_label[3]=int(flow_label[3])
                         flow_label[4]=int(flow_label[4])
                         flows_extracted[tuple(flow_label)]= state_entry.entry.flow_data_var[:4]
-                    self.flow_stats_history[-1][dpid][table_id] = flows_extracted
+                    self.flow_stats_history[-1][dpid].update(flows_extracted)
+                    #self.flow_stats_history[-1][dpid][table_id] = flows_extracted
                     #print(self.flow_stats_history[-1][dpid])
                     #self.log.info("switch n", dpid, self.flow_stats_history[-1][dpid], "\n")
                 self.counter_rv_flow_stats += 1
@@ -118,18 +121,19 @@ class BebaSampleAndHold(app_manager.RyuApp):
     def ask_for_state(self, device, table_id, state):
         m = bebaparser.OFPExpGetFlowsInState(device, table_id= table_id, state=state)
         device.send_msg(m)
-        self.log.info("GetFlowsInState message sent")
+        #self.log.info("GetFlowsInState message sent")
 
     def ask_for_port_stats(self, device):
         m = ofparser.OFPPortStatsRequest(device, 0, ofproto.OFPP_ANY)
         device.send_msg(m)
-        self.log.info("OFPPortStatsRequest sent")
+        #self.log.info("OFPPortStatsRequest sent")
 
 ########################################################################################################################
 
     def monitor(self):
         # "state 1":"monitoring", "state 2":"elephant"
         state = 2
+        self.starts_ts = get_switch_time()
         while True:
             self.counter_rv_flow_stats = 0
             self.counter_rv_port_stats = 0
@@ -139,6 +143,7 @@ class BebaSampleAndHold(app_manager.RyuApp):
             else:
                 self.port_stats_history.append(dict())
                 self.flow_stats_history.append(dict())
+                self.log.info("StatsRequest sent")
                 for device in self.devices.values():
                     self.ask_for_port_stats(device)
                     for table_id in self.map_proto_tableid.values():
