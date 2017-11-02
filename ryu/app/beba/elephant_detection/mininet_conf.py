@@ -67,7 +67,7 @@ def build_iperf_cmd(proto, bw, i, srv_add):
         s+= "-c" + " " + srv_add + " " + "-t" + " " + str(conn_time) + " "
         if proto == "UDP":
             s += "-u" + " "
-        if bw != 0:
+        if bw != "0":
             s+= "-b" + " " + str(bw) + " "
     else:
         s+= "-s" + " "
@@ -120,13 +120,21 @@ if __name__ == '__main__':
     time.sleep(5)
     #CLI( net )
     #raw_input('Press ENTER to start iperf...')
-    for i,connection in enumerate(endpoint_list):
-        server_host = net.get(connection[1])
-        server_ip = server_host.IP()
-        res = server_host.cmd (build_iperf_cmd(connection[2], connection[3], i, "" ))
-        time.sleep(2)
-        net.get(connection[0]).cmd (build_iperf_cmd(connection[2], connection[3], i, server_ip ))
-        time.sleep(2)
+    endpoint_list= sorted(endpoint_list,key= lambda x:x[3], reverse=True)
+    i = 0
+    t = 0
+    while endpoint_list:
+        if t >= int(endpoint_list[-1][4]):
+            connection = endpoint_list.pop()
+            server_host = net.get(connection[1])
+            server_ip = server_host.IP()
+            res = server_host.cmd (build_iperf_cmd(connection[2], connection[3], i, "" ))
+            time.sleep(2)
+            net.get(connection[0]).cmd (build_iperf_cmd(connection[2], connection[3], i, server_ip ))
+            time.sleep(2)
+            i+=1
+        time.sleep(1)
+        t+=1
     time.sleep(40)
     net.stop()
     os.system("sudo mn -c 2> /dev/null")

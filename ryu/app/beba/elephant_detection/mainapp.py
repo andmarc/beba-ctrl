@@ -19,7 +19,8 @@ class BebaSampleAndHold(app_manager.RyuApp):
     def __init__(self, *args, **kwargs):
         super(BebaSampleAndHold, self).__init__(*args, **kwargs)
         self.sample_interval = 1
-        self.time_interval = 10
+        self.stats_req_time_interval = 10
+        self.switch_window_time_interval = self.stats_req_time_interval - 0.1
         self.hh_threshold = 500000
         self.congestion_thresh = 95
         self.map_proto_tableid = {"tcp": 2, "udp": 3}
@@ -32,7 +33,8 @@ class BebaSampleAndHold(app_manager.RyuApp):
         self.port_stats_history = list()
         self.flow_stats_history = list()
 
-        self.Routing = routing.Routing(self.devices, table_id=0, next_table_id=1, time_interval=self.time_interval)
+        self.Routing = routing.Routing(self.devices, table_id=0, next_table_id=1, stats_req_time_interval=self.stats_req_time_interval,
+                                       switch_window_time_interval=self.switch_window_time_interval)
 
         self.SampleAndHold = sample_and_hold.SampleAndHold(table_id=1, map_proto_tableid=self.map_proto_tableid,
                                                            ip_proto_values=self.ip_proto_values,
@@ -40,12 +42,12 @@ class BebaSampleAndHold(app_manager.RyuApp):
 
         self.CountTCPflows = flows_counter.FlowsCounter(table_id = self.map_proto_tableid["tcp"],
                                                         ip_proto = self.ip_proto_values["tcp"],
-                                                        time_interval = self.time_interval-0.1,
+                                                        time_interval = self.switch_window_time_interval,
                                                         hh_threshold = self.hh_threshold)
 
         self.CountUDPflows = flows_counter.FlowsCounter(table_id=self.map_proto_tableid["udp"],
                                                         ip_proto=self.ip_proto_values["udp"],
-                                                        time_interval=self.time_interval-0.1,
+                                                        time_interval=self.switch_window_time_interval,
                                                         hh_threshold=self.hh_threshold)
 
         self.log = logging.getLogger('app.beba.sample_and_hold')
@@ -110,9 +112,11 @@ class BebaSampleAndHold(app_manager.RyuApp):
         for stat in event.msg.body:
             if stat.port_no != ofproto.OFPP_LOCAL:
                 self.port_stats_history[-1].setdefault(dpid,dict())
-                self.port_stats_history[-1][dpid][stat.port_no] = (stat.rx_bytes - self.port_stats.get((dpid,stat.port_no),(0,0))[0],
-                                                                   stat.tx_bytes - self.port_stats.get((dpid,stat.port_no),(0,0))[1])
-                self.port_stats[(dpid,stat.port_no)] = (stat.rx_bytes, stat.tx_bytes)
+                self.port_stats_history[-1][dpid][stat.port_no] = (stat.rx_bytes - self.port_stats.get((dpid,stat.port_no),(0,0,0,0))[0],
+                                                                   stat.tx_bytes - self.port_stats.get((dpid,stat.port_no),(0,0,0,0))[1],
+                                                                   stat.rx_dropped - self.port_stats.get((dpid, stat.port_no), (0,0,0,0))[2],
+                                                                   stat.tx_dropped - self.port_stats.get((dpid, stat.port_no), (0,0,0,0))[3])
+                self.port_stats[(dpid,stat.port_no)] = (stat.rx_bytes, stat.tx_bytes, stat.rx_dropped, stat.tx_dropped)
         self.counter_rv_port_stats += 1
         self.check_stats_rv()
 
@@ -148,4 +152,4 @@ class BebaSampleAndHold(app_manager.RyuApp):
                     self.ask_for_port_stats(device)
                     for table_id in self.map_proto_tableid.values():
                         self.ask_for_state(device, table_id, state)
-            hub.sleep(self.time_interval)
+            hub.sleep(self.stats_req_time_interval)

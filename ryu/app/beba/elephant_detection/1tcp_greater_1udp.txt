@@ -5,5 +5,5 @@ s1 s2 10
 s1 s3 5
 s2 s3 10
 
-h1 h3 UDP 3M
-h2 h3 TCP 7M
+h1 h3 UDP 3M 0
+h2 h3 TCP 7M 0
