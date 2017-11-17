@@ -60,7 +60,7 @@ def get_hosts_info(net,topo):
 
 def build_iperf_cmd(proto, bw, i, srv_add):
     base_port = 3000
-    conn_time = 40
+    conn_time = 600
     s= "iperf3 " if proto == "TCP" else "iperf "
 
     if srv_add != "":
@@ -136,6 +136,7 @@ if __name__ == '__main__':
         time.sleep(1)
         t+=1
     time.sleep(40)
+    CLI(net)
     net.stop()
     os.system("sudo mn -c 2> /dev/null")
     os.system("kill -9 $(pidof -x ryu-manager) 2> /dev/null")

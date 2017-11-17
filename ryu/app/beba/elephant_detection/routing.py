@@ -1,6 +1,6 @@
 import networkx as nx
 import operator
-from utils import add_flow, dpid_from_name, get_from_mininet, get_switch_time
+from utils import add_flow, dpid_from_name, get_from_mininet, get_switch_time, bps_to_human_string, red_msg, green_msg
 
 
 class Routing():
@@ -45,7 +45,7 @@ class Routing():
                 self.update_link_ep_map(path_old, "REM")
                 del self.ep_path_map[elephant_ep]
 
-    def apply_routing(self, path, topo, priority, hard_timeout=0):
+    def apply_routing(self, path, topo, priority, hard_timeout=0, idle_timeout=0):
         src_ip = self.addresses[path[0]]["ip"]
         dst_ip = self.addresses[path[-1]]["ip"]
         for previous_hop, hop, next_hop in list(zip(path, path[1:], path[2:])):
@@ -57,7 +57,7 @@ class Routing():
                                                            in_port=topo[hop][previous_hop]['port']),
                           [parser.OFPActionOutput(topo[hop][next_hop]['port'])],
                           [parser.OFPInstructionGotoTable(self.next_table_id)],
-                     hard_timeout=hard_timeout)
+                     hard_timeout=hard_timeout, idle_timeout=idle_timeout)
         #self.link_ep_map.setdefault((hop, next_hop), [])
         #self.link_ep_map[(hop, next_hop)].append((path[0], path[-1]))
 
@@ -74,7 +74,7 @@ class Routing():
                             self.apply_routing(path, self.topo, 0)
                             self.update_link_ep_map(path, "ADD", True)
                         except nx.NetworkXNoPath:
-                            print "No path between %s and %s" % (h1, h2)
+                            red_msg("No path between %s and %s" % (h1, h2))
 
     def get_elephant_by_link(self,flow_stats_history, link):
         a,b = link
@@ -162,7 +162,7 @@ class Routing():
             print(new_forwarding_list)
             #print topo1.edges(data=True)
             for el in new_forwarding_list:
-                print "Attempting to reroute:", el[0], "with size", el[1]
+                green_msg("Attempting to reroute: %s with size %s" % (el[0], bps_to_human_string(el[1])))
                 elephant_ep, elephant_size = el
                 #print elephant_ep,elephant_size
                 topo2 = topo1.copy()
@@ -181,7 +181,7 @@ class Routing():
 
                     self.update_link_ep_map(path, "ADD")
                     self.update_capacity(path, topo1, "ADD", elephant_size)
-                    self.apply_routing(path, topo1, priority_old+1, self.time_interval_np)
+                    self.apply_routing(path, topo1, priority_old+1, idle_timeout=self.time_interval_np)
                     print 'Rerouted path %s->%s' % (elephant_ep[0], elephant_ep[1]), path
                     print "Route installed with priority", priority_old+1
                     self.ep_path_map[elephant_ep] = (path, priority_old+1, get_switch_time()+self.time_interval_np*1000)
