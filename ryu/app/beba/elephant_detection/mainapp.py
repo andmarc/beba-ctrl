@@ -18,7 +18,7 @@ from utils import get_switch_time
 class BebaSampleAndHold(app_manager.RyuApp):
     def __init__(self, *args, **kwargs):
         super(BebaSampleAndHold, self).__init__(*args, **kwargs)
-        self.sample_interval = 1
+        self.sample_probability = 1
         self.stats_req_time_interval = 10
         self.switch_window_time_interval = self.stats_req_time_interval - 0.1
         self.hh_threshold = 500000
@@ -38,7 +38,7 @@ class BebaSampleAndHold(app_manager.RyuApp):
 
         self.SampleAndHold = sample_and_hold.SampleAndHold(table_id=1, map_proto_tableid=self.map_proto_tableid,
                                                            ip_proto_values=self.ip_proto_values,
-                                                           sample_interval=self.sample_interval)
+                                                           sample_probability=self.sample_probability)
 
         self.CountTCPflows = flows_counter.FlowsCounter(table_id = self.map_proto_tableid["tcp"],
                                                         ip_proto = self.ip_proto_values["tcp"],
