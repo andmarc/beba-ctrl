@@ -10,8 +10,7 @@ class SampleAndHold:
         self.table_id = table_id
         self.map_proto_tableid = map_proto_tableid
         self.ip_proto_values = ip_proto_values
-        self.random_threshold = round(sample_probability*2**16 - 1)
-        assert self.random_threshold != -1
+        self.random_threshold = int(sample_probability*(2**16 - 1))
 
     def configure_stateful_table(self, datapath):
         req = bebaparser.OFPExpMsgConfigureStatefulTable(datapath=datapath, table_id=self.table_id, stateful=1)
