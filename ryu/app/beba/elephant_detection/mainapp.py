@@ -19,6 +19,8 @@ from webob import Response
 from networkx.readwrite import json_graph
 import threading
 
+import os
+
 sample_and_hold_instance_name = 'sample_and_hold_api_app'
 url = '/sample_and_hold'
 
@@ -45,7 +47,8 @@ class BebaSampleAndHold(app_manager.RyuApp):
         self.flow_stats_history = list()
 
         self.Routing = routing.Routing(self.devices, table_id=0, next_table_id=1, stats_req_time_interval=self.stats_req_time_interval,
-                                       switch_window_time_interval=self.switch_window_time_interval, congestion_thresh=self.congestion_thresh)
+                                       switch_window_time_interval=self.switch_window_time_interval, congestion_thresh=self.congestion_thresh,
+                                       filename=os.environ['FILENAME'] if 'FILENAME' in os.environ else None)
 
         self.SampleAndHold = sample_and_hold.SampleAndHold(table_id=1, map_proto_tableid=self.map_proto_tableid,
                                                            ip_proto_values=self.ip_proto_values,

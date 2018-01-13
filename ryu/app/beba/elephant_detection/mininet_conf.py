@@ -8,6 +8,10 @@ import os,time,pickle
 import networkx as nx
 import sys
 
+'''
+We are assunimng Ryu is running on a VM reachable via 6634 (OpenFlow) and 4567 (SSH).
+data.pkl is automatically copied via scp (root login via SSH must be enabled)
+'''
 
 C_list = list()
 endpoint_list = list()
@@ -82,6 +86,10 @@ if __name__ == '__main__':
     assert len(sys.argv) == 2
     load_topo_info(sys.argv[1])
 
+    M = 1
+    N = 1
+    FILENAME = '%d.%d.txt' % (M, N)
+
     is_nat_active = False
     debug_mode = False
     if os.geteuid() != 0:
@@ -112,15 +120,19 @@ if __name__ == '__main__':
     export_data.append(hosts_info)
     with open('data.pkl', 'wb') as fh:
         pickle.dump(export_data, fh)
+    os.system('sshpass -p mininet scp -P 4567 data.pkl root@0:/home/mininet/beba-ctrl/ryu/app/beba/elephant_detection')
 
     #os.system('ryu-manager mainapp.py 2> /dev/null &')
-    os.system('ryu-manager mainapp.py &')
+    #os.system('ryu-manager mainapp.py &')
+    #print 'Start Ryu'
+    os.system('sshpass -p mininet ssh -X -p 4567 root@0 cd /home/mininet/beba-ctrl/ryu/app/beba/elephant_detection/\;xterm -e \"export\ FILENAME=%s\;ryu-manager\ mainapp.py\;bash\" &' % FILENAME)
     #os.system('xterm -e "ryu-manager mainapp.py; bash" &')
     net.start()
     time.sleep(5)
     #CLI( net )
     #raw_input('Press ENTER to start iperf...')
-    endpoint_list= sorted(endpoint_list,key= lambda x:x[3], reverse=True)
+    #endpoint_list= sorted(endpoint_list,key= lambda x:x[3], reverse=True)
+    endpoint_list= sorted(endpoint_list,key= lambda x:x[4], reverse=True)
     i = 0
     t = 0
     while endpoint_list:
@@ -129,14 +141,17 @@ if __name__ == '__main__':
             server_host = net.get(connection[1])
             server_ip = server_host.IP()
             res = server_host.cmd (build_iperf_cmd(connection[2], connection[3], i, "" ))
-            time.sleep(2)
+            #time.sleep(2)
             net.get(connection[0]).cmd (build_iperf_cmd(connection[2], connection[3], i, server_ip ))
-            time.sleep(2)
+            #time.sleep(2)
             i+=1
-        time.sleep(1)
-        t+=1
-    time.sleep(40)
+        else:
+            time.sleep(1)
+            t+=1
+
+    time.sleep(5)
     CLI(net)
     net.stop()
     os.system("sudo mn -c 2> /dev/null")
-    os.system("kill -9 $(pidof -x ryu-manager) 2> /dev/null")
+    #os.system("kill -9 $(pidof -x ryu-manager) 2> /dev/null")
+    os.system('sshpass -p mininet ssh -p 4567 root@0 killall ryu-manager &')

@@ -1,10 +1,11 @@
 import networkx as nx
 import operator
 from utils import add_flow, dpid_from_name, get_from_mininet, get_switch_time, bps_to_human_string, red_msg, green_msg
-
+import datetime
 
 class Routing():
-    def __init__(self, devices, table_id, next_table_id, stats_req_time_interval, switch_window_time_interval, congestion_thresh=95):
+    def __init__(self, devices, table_id, next_table_id, stats_req_time_interval, switch_window_time_interval,
+                 congestion_thresh=95, filename=None):
 
         self.topo, self.addresses = get_from_mininet()
         self.devices = devices
@@ -18,6 +19,8 @@ class Routing():
         self.switch_num = len([node for node in self.topo.nodes() if 's' in node])
         self.link_ep_map = dict()
         self.ep_path_map = dict()
+
+        self.filename = filename
 
     def update_link_ep_map(self, path, mode, is_init= False):
         for previous_hop, hop in list(zip(path, path[1:])):
@@ -162,6 +165,12 @@ class Routing():
             print(new_forwarding_list)
             #print topo1.edges(data=True)
             for el in new_forwarding_list:
+                s = "Detected potential elastic: %s with size %s" % (el[0], bps_to_human_string(el[1]))
+                if self.filename is not None:
+                    with open(self.filename, "a") as myfile:
+                        myfile.write(str(datetime.datetime.now()) + ' ' + s + '\n')
+                green_msg(s)
+                continue
                 green_msg("Attempting to reroute: %s with size %s" % (el[0], bps_to_human_string(el[1])))
                 elephant_ep, elephant_size = el
                 #print elephant_ep,elephant_size
