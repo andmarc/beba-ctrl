@@ -63,23 +63,46 @@ def get_hosts_info(net,topo):
 
 
 def build_iperf_cmd(proto, bw, i, srv_add, conn_time=600, use_xterm=False):
-    base_port = 3000
-    s= "iperf3 " if proto == "TCP" else "iperf "
+    if False:
+        base_port = 3000
+        s= "iperf3 " if proto == "TCP" else "iperf "
 
-    if srv_add != "":
-        # client instance
-        s = 'sleep 1; ' + s
-        s+= "-c" + " " + srv_add + " " + "-t" + " " + str(conn_time) + " "
-        if proto == "UDP":
-            s += "-u" + " "
-        if bw != "0":
-            s+= "-b" + " " + str(bw) + " "
+        if srv_add != "":
+            # client instance
+            s = 'sleep 1; ' + s
+            s+= "-c" + " " + srv_add + " " + "-t" + " " + str(conn_time) + " "
+            if proto == "UDP":
+                s += "-u" + " "
+            if bw != "0":
+                s+= "-b" + " " + str(bw) + " "
+        else:
+            # server instance
+            s+= "-s" + " "
+
+        s+= "-p" + " " + str(base_port + i) + " "
+        s+= "&"
     else:
-        # server instance
-        s+= "-s" + " "
-
-    s+= "-p" + " " + str(base_port + i) + " "
-    s+= "&"
+        '''
+        cd ~
+        mkdir nuttcp
+        cd nuttcp/
+        wget http://nuttcp.net/nuttcp/beta/nuttcp-7.3.3.c
+        cc nuttcp-7.3.3.c -o nuttcp-7
+        sudo cp nuttcp-7 /usr/bin/nuttcp
+        '''
+        base_port = 7000
+        if srv_add != "":
+            s = '(sleep 1; nuttcp -P' + str(base_port + i) + ' -v -T ' + str(conn_time) + ' '
+            if proto != "TCP":
+                s += '-u '
+            if bw != "0":
+                s += "-Ri" + str(bw.lower()) + " "
+            s += ' ' + srv_add + ') &'
+        else:
+            s = 'nuttcp -v -1 -P' + str(base_port + i)
+            if proto != "TCP":
+                s += ' -u '
+            s += '&'
 
     if use_xterm:
         XTERM_GEOMETRY = '-geometry 80x20+100+100'
@@ -100,12 +123,12 @@ if __name__ == '__main__':
     REMOTE_CTRL = True
 
     if OVERRIDE:
-        M_RANGE = [0]
-        N_RANGE = [5, 10]
-        IPERF_DURATION = 30  # s
-        ACCESS_LINK_CAPACITY = 10  # Mbps
-        CORE_LINK_CAPACITY = 10  # Mbps
-        CBR = '1M'
+        M_RANGE = [1]
+        N_RANGE = [6]
+        IPERF_DURATION = 60  # s
+        ACCESS_LINK_CAPACITY = 20 # Mbps
+        CORE_LINK_CAPACITY = 100  # Mbps
+        CBR = '20M'
     else:
         M_RANGE = [0]
         N_RANGE = [0]
@@ -119,12 +142,12 @@ if __name__ == '__main__':
                 endpoint_list = []
                 for idx, i in enumerate(range(N)):
                     C_list.append(('h%d' % idx, 's100', str(ACCESS_LINK_CAPACITY)))
-                    C_list.append(('h%d' % (200+idx), 's200', str(ACCESS_LINK_CAPACITY)))
-                    endpoint_list.append(('h%d' % (idx), 'h%d' % (200+idx), 'TCP', '0', '0'))
+                    C_list.append(('h%d' % (201+idx), 's200', str(ACCESS_LINK_CAPACITY)))
+                    endpoint_list.append(('h%d' % (idx), 'h%d' % (201+idx), 'TCP', '0', '0'))
                 for idx, i in enumerate(range(M)):
                     C_list.append(('h%d' % (1000 + idx), 's100', str(ACCESS_LINK_CAPACITY)))
-                    C_list.append(('h%d' % (1000 + 200 + idx), 's200', str(ACCESS_LINK_CAPACITY)))
-                    endpoint_list.append(('h%d' % (1000 + idx), 'h%d' % (1000 + 200 + idx), 'UDP', CBR, '0'))
+                    C_list.append(('h%d' % (1000 + 201 + idx), 's200', str(ACCESS_LINK_CAPACITY)))
+                    endpoint_list.append(('h%d' % (1000 + idx), 'h%d' % (1000 + 201 + idx), 'UDP', CBR, '0'))
                 # print C_list
                 # print endpoint_list
 
@@ -134,6 +157,8 @@ if __name__ == '__main__':
             debug_mode = False
             if os.geteuid() != 0:
                 exit("You need to have root privileges to run this script")
+            os.system("sudo kill -9 `pidof nuttcp` 2> /dev/null")
+            os.system("sudo kill -9 `pidof xterm` 2> /dev/null")
             os.system("sudo mn -c 2> /dev/null")
             if REMOTE_CTRL:
                 os.system('sshpass -p mininet ssh -p 4567 root@0 killall ryu-manager')
@@ -194,15 +219,15 @@ if __name__ == '__main__':
                 else:
                     time.sleep(1)
                     t+=1
-            '''if REMOTE_CTRL:
-                print os.system('sshpass -p mininet ssh -p 4567 root@0 pidof iperf3')
-                print os.system('sshpass -p mininet ssh -p 4567 root@0 pidof iperf')'''
 
             time.sleep(10 + max_start_time + IPERF_DURATION)
             #CLI(net)
+            os.system("sudo kill -9 `pidof nuttcp` 2> /dev/null")
+            os.system("sudo kill -9 `pidof xterm` 2> /dev/null")
             net.stop()
             os.system("sudo mn -c 2> /dev/null")
             if REMOTE_CTRL:
                 os.system('sshpass -p mininet ssh -p 4567 root@0 killall ryu-manager')
             else:
                 os.system("kill -9 $(pidof -x ryu-manager) 2> /dev/null")
+            time.sleep(5)
