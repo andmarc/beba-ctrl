@@ -62,22 +62,29 @@ def get_hosts_info(net,topo):
     return d
 
 
-def build_iperf_cmd(proto, bw, i, srv_add):
+def build_iperf_cmd(proto, bw, i, srv_add, conn_time=600, use_xterm=False):
     base_port = 3000
-    conn_time = 600
     s= "iperf3 " if proto == "TCP" else "iperf "
 
     if srv_add != "":
+        # client instance
+        s = 'sleep 1; ' + s
         s+= "-c" + " " + srv_add + " " + "-t" + " " + str(conn_time) + " "
         if proto == "UDP":
             s += "-u" + " "
         if bw != "0":
             s+= "-b" + " " + str(bw) + " "
     else:
+        # server instance
         s+= "-s" + " "
 
     s+= "-p" + " " + str(base_port + i) + " "
     s+= "&"
+
+    if use_xterm:
+        XTERM_GEOMETRY = '-geometry 80x20+100+100'
+        s = 'xterm %s -e "%s; bash"&' % (XTERM_GEOMETRY, s.replace('&', ''))
+
     print(s)
     return s
 
@@ -86,72 +93,116 @@ if __name__ == '__main__':
     assert len(sys.argv) == 2
     load_topo_info(sys.argv[1])
 
-    M = 1
-    N = 1
-    FILENAME = '%d.%d.txt' % (M, N)
+    # Set to True to create M CBR flows and N elastic flows with an automated topology
+    OVERRIDE = True
 
-    is_nat_active = False
-    debug_mode = False
-    if os.geteuid() != 0:
-        exit("You need to have root privileges to run this script")
-    os.system("sudo mn -c 2> /dev/null")
-    os.system("kill -9 $(pidof -x ryu-manager) 2> /dev/null")
+    # Set to True if ryu is running inside a VM
+    REMOTE_CTRL = True
 
-    print 'Starting Ryu controller'
-    topo = MyTopo()
-    net = Mininet(topo= topo,
-                  host=BebaHost,
-                  ipBase='10.0.0.0/8',
-                  link=TCLink,
-                  switch=UserSwitch if not debug_mode else BebaSwitchDbg,
-                  controller=RemoteController,
-                  cleanup=True,
-                  autoSetMacs=True,
-                  autoStaticArp=True,
-                  listenPort=6634)
-    if is_nat_active:
-        net.addNAT().configDefault()
-        for off in ["rx", "tx", "sg"]:
-            cmd = "/sbin/ethtool --offload nat0-eth0 %s off" % off
-            net.hosts[-1].cmd(cmd)
-    hosts_info = get_hosts_info(net, topo)
-    n_hosts = len(hosts_info)
-    #print(hosts_info)
-    export_data.append(hosts_info)
-    with open('data.pkl', 'wb') as fh:
-        pickle.dump(export_data, fh)
-    os.system('sshpass -p mininet scp -P 4567 data.pkl root@0:/home/mininet/beba-ctrl/ryu/app/beba/elephant_detection')
+    if OVERRIDE:
+        M_RANGE = [0]
+        N_RANGE = [5, 10]
+        IPERF_DURATION = 30  # s
+        ACCESS_LINK_CAPACITY = 10  # Mbps
+        CORE_LINK_CAPACITY = 10  # Mbps
+        CBR = '1M'
+    else:
+        M_RANGE = [0]
+        N_RANGE = [0]
+        IPERF_DURATION = 600
 
-    #os.system('ryu-manager mainapp.py 2> /dev/null &')
-    #os.system('ryu-manager mainapp.py &')
-    #print 'Start Ryu'
-    os.system('sshpass -p mininet ssh -X -p 4567 root@0 cd /home/mininet/beba-ctrl/ryu/app/beba/elephant_detection/\;xterm -e \"export\ FILENAME=%s\;ryu-manager\ mainapp.py\;bash\" &' % FILENAME)
-    #os.system('xterm -e "ryu-manager mainapp.py; bash" &')
-    net.start()
-    time.sleep(5)
-    #CLI( net )
-    #raw_input('Press ENTER to start iperf...')
-    #endpoint_list= sorted(endpoint_list,key= lambda x:x[3], reverse=True)
-    endpoint_list= sorted(endpoint_list,key= lambda x:x[4], reverse=True)
-    i = 0
-    t = 0
-    while endpoint_list:
-        if t >= int(endpoint_list[-1][4]):
-            connection = endpoint_list.pop()
-            server_host = net.get(connection[1])
-            server_ip = server_host.IP()
-            res = server_host.cmd (build_iperf_cmd(connection[2], connection[3], i, "" ))
-            #time.sleep(2)
-            net.get(connection[0]).cmd (build_iperf_cmd(connection[2], connection[3], i, server_ip ))
-            #time.sleep(2)
-            i+=1
-        else:
-            time.sleep(1)
-            t+=1
+    for M in M_RANGE:
+        for N in N_RANGE:
+            if OVERRIDE:
+                # override topology
+                C_list = [('s100', 's200', str(CORE_LINK_CAPACITY))]
+                endpoint_list = []
+                for idx, i in enumerate(range(N)):
+                    C_list.append(('h%d' % idx, 's100', str(ACCESS_LINK_CAPACITY)))
+                    C_list.append(('h%d' % (200+idx), 's200', str(ACCESS_LINK_CAPACITY)))
+                    endpoint_list.append(('h%d' % (idx), 'h%d' % (200+idx), 'TCP', '0', '0'))
+                for idx, i in enumerate(range(M)):
+                    C_list.append(('h%d' % (1000 + idx), 's100', str(ACCESS_LINK_CAPACITY)))
+                    C_list.append(('h%d' % (1000 + 200 + idx), 's200', str(ACCESS_LINK_CAPACITY)))
+                    endpoint_list.append(('h%d' % (1000 + idx), 'h%d' % (1000 + 200 + idx), 'UDP', CBR, '0'))
+                # print C_list
+                # print endpoint_list
 
-    time.sleep(5)
-    CLI(net)
-    net.stop()
-    os.system("sudo mn -c 2> /dev/null")
-    #os.system("kill -9 $(pidof -x ryu-manager) 2> /dev/null")
-    os.system('sshpass -p mininet ssh -p 4567 root@0 killall ryu-manager &')
+            FILENAME = '%d.%d.txt' % (M, N)
+
+            is_nat_active = False
+            debug_mode = False
+            if os.geteuid() != 0:
+                exit("You need to have root privileges to run this script")
+            os.system("sudo mn -c 2> /dev/null")
+            if REMOTE_CTRL:
+                os.system('sshpass -p mininet ssh -p 4567 root@0 killall ryu-manager')
+            else:
+                os.system("kill -9 $(pidof -x ryu-manager) 2> /dev/null")
+
+            print 'Starting Ryu controller'
+            topo = MyTopo()
+            net = Mininet(topo= topo,
+                          host=BebaHost,
+                          ipBase='10.0.0.0/8',
+                          link=TCLink,
+                          switch=UserSwitch if not debug_mode else BebaSwitchDbg,
+                          controller=RemoteController,
+                          cleanup=True,
+                          autoSetMacs=True,
+                          autoStaticArp=True,
+                          listenPort=6634)
+            if is_nat_active:
+                net.addNAT().configDefault()
+                for off in ["rx", "tx", "sg"]:
+                    cmd = "/sbin/ethtool --offload nat0-eth0 %s off" % off
+                    net.hosts[-1].cmd(cmd)
+            hosts_info = get_hosts_info(net, topo)
+            n_hosts = len(hosts_info)
+            #print(hosts_info)
+            export_data.append(hosts_info)
+            with open('data.pkl', 'wb') as fh:
+                pickle.dump(export_data, fh)
+            if REMOTE_CTRL:
+                os.system('sshpass -p mininet scp -P 4567 data.pkl root@0:/home/mininet/beba-ctrl/ryu/app/beba/elephant_detection')
+
+            #os.system('ryu-manager mainapp.py 2> /dev/null &')
+            #os.system('ryu-manager mainapp.py &')
+            #print 'Start Ryu'
+            if REMOTE_CTRL:
+                os.system('sshpass -p mininet ssh -X -p 4567 root@0 cd /home/mininet/beba-ctrl/ryu/app/beba/elephant_detection/\;xterm -e \"export\ FILENAME=%s\;ryu-manager\ mainapp.py\;bash\" &' % FILENAME)
+            else:
+                os.system('xterm -e "export FILENAME=%s; ryu-manager mainapp.py; bash" &' % FILENAME)
+            net.start()
+            time.sleep(5)
+            #CLI( net )
+            #raw_input('Press ENTER to start iperf...')
+            endpoint_list = sorted(endpoint_list,key= lambda x: x[4], reverse=True)
+            max_start_time = int(endpoint_list[0][4])
+            i = 0
+            t = 0
+            while endpoint_list:
+                if t >= int(endpoint_list[-1][4]):
+                    connection = endpoint_list.pop()
+                    server_host = net.get(connection[1])
+                    server_ip = server_host.IP()
+                    res = server_host.cmd (build_iperf_cmd(connection[2], connection[3], i, "", conn_time=IPERF_DURATION))
+                    #time.sleep(2)
+                    net.get(connection[0]).cmd (build_iperf_cmd(connection[2], connection[3], i, server_ip, conn_time=IPERF_DURATION))
+                    #time.sleep(2)
+                    i+=1
+                else:
+                    time.sleep(1)
+                    t+=1
+            '''if REMOTE_CTRL:
+                print os.system('sshpass -p mininet ssh -p 4567 root@0 pidof iperf3')
+                print os.system('sshpass -p mininet ssh -p 4567 root@0 pidof iperf')'''
+
+            time.sleep(10 + max_start_time + IPERF_DURATION)
+            #CLI(net)
+            net.stop()
+            os.system("sudo mn -c 2> /dev/null")
+            if REMOTE_CTRL:
+                os.system('sshpass -p mininet ssh -p 4567 root@0 killall ryu-manager')
+            else:
+                os.system("kill -9 $(pidof -x ryu-manager) 2> /dev/null")

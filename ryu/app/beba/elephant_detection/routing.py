@@ -2,6 +2,7 @@ import networkx as nx
 import operator
 from utils import add_flow, dpid_from_name, get_from_mininet, get_switch_time, bps_to_human_string, red_msg, green_msg
 import datetime
+from pprint import pprint
 
 class Routing():
     def __init__(self, devices, table_id, next_table_id, stats_req_time_interval, switch_window_time_interval,
@@ -21,6 +22,8 @@ class Routing():
         self.ep_path_map = dict()
 
         self.filename = filename
+        if filename is not None:
+            self.filename = datetime.datetime.now().strftime('%Y-%m-%d.%H:%M:%S.') + self.filename
 
     def update_link_ep_map(self, path, mode, is_init= False):
         for previous_hop, hop in list(zip(path, path[1:])):
@@ -105,6 +108,7 @@ class Routing():
                 elephant = temp_map[link_ip_map.index((flow[0],flow[1]))]"""
 
         n_stats = len(flow_stats_history)
+        all_elephants = {}
         for flow in flows:
             if (flow[0], flow[1]) in link_ip_map:
                 ts_end_new = flows[flow][0]
@@ -121,11 +125,12 @@ class Routing():
                                 (self.start_ts/1000+n_stats*self.stats_req_time_interval + self.switch_window_time_interval - ts_end_old/1000)
                 #value = real_rate * self.stats_req_time_interval
                 #print(flow, value)
+                all_elephants[temp_map[link_ip_map.index((flow[0], flow[1]))]] = real_rate
                 if real_rate > max_value:
                     max_value = real_rate
                     elephant = temp_map[link_ip_map.index((flow[0], flow[1]))]
 
-        return {elephant:max_value*8} if max_value else None
+        return {elephant:max_value*8} if max_value else None, all_elephants if len(all_elephants)>0 else None
 
 
     def react(self, port_stats_history, flow_stats_history, start_ts):
@@ -137,6 +142,7 @@ class Routing():
         self.remove_expired_path()
         topo1 = self.topo.copy()
         new_forwarding_list = dict()
+        all_elephants_of_saturated_links = {}
         for link in sorted(self.topo.edges()):
             if 'h' not in link[0] and 'h' not in link[1]:
                 print
@@ -152,7 +158,7 @@ class Routing():
                 #for occ in (rx_occ, tx_occ):
                 if occ > self.congestion_thresh:
                     link_ep = (link[0], link[1]) if occ == tx_occ else (link[1], link[0])
-                    res = self.get_elephant_by_link(flow_stats_history, link_ep)
+                    res, all_elephants_of_saturated_links[link] = self.get_elephant_by_link(flow_stats_history, link_ep)
                     if res is not None:
                         new_forwarding_list.update(res)
                 topo1[link[0]][link[1]]["C_res"] = (100 - tx_occ)/100 *\
@@ -164,11 +170,12 @@ class Routing():
             new_forwarding_list = sorted(new_forwarding_list.items(), key=operator.itemgetter(1), reverse=True)
             print(new_forwarding_list)
             #print topo1.edges(data=True)
+            pprint(all_elephants_of_saturated_links)
             for el in new_forwarding_list:
                 s = "Detected potential elastic: %s with size %s" % (el[0], bps_to_human_string(el[1]))
                 if self.filename is not None:
                     with open(self.filename, "a") as myfile:
-                        myfile.write(str(datetime.datetime.now()) + ' ' + s + '\n')
+                        myfile.write(str(datetime.datetime.now()) + '\n' + str(all_elephants_of_saturated_links) + '\n')
                 green_msg(s)
                 continue
                 green_msg("Attempting to reroute: %s with size %s" % (el[0], bps_to_human_string(el[1])))
