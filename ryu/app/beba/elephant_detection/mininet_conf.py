@@ -119,6 +119,8 @@ if __name__ == '__main__':
     # Set to True if ryu is running inside a VM
     REMOTE_CTRL = True
 
+    USE_XTERM = False
+
     if len(sys.argv) > 2:
         M, N, IPERF_DURATION, CORE_LINK_CAPACITY, ACCESS_LINK_CAPACITY = map(int, sys.argv[2:-1])
         CBR = sys.argv[-1]
@@ -137,7 +139,7 @@ if __name__ == '__main__':
         # print C_list
         # print endpoint_list
 
-        FILENAME = '%d.%d.txt' % (M, N)
+        FILENAME = '%d.%d.%d.%s.txt' % (M, N, CORE_LINK_CAPACITY, CBR)
     else:
         FILENAME = 'custom.txt'
 
@@ -183,9 +185,16 @@ if __name__ == '__main__':
     #os.system('ryu-manager mainapp.py &')
     #print 'Start Ryu'
     if REMOTE_CTRL:
-        os.system('sshpass -p mininet ssh -X -p 4567 root@0 cd /home/mininet/beba-ctrl/ryu/app/beba/elephant_detection/\;xterm -e \"export\ FILENAME=%s\;ryu-manager\ mainapp.py\;bash\" &' % FILENAME)
+        if USE_XTERM:
+            os.system('sshpass -p mininet ssh -X -p 4567 root@0 cd /home/mininet/beba-ctrl/ryu/app/beba/elephant_detection/\;xterm -e \"export\ FILENAME=%s\;ryu-manager\ mainapp.py\;bash\" &' % FILENAME)
+        else:
+            os.system(
+                'sshpass -p mininet ssh -X -p 4567 root@0 cd /home/mininet/beba-ctrl/ryu/app/beba/elephant_detection/\;export\ FILENAME=%s\;ryu-manager\ mainapp.py &' % FILENAME)
     else:
-        os.system('xterm -e "export FILENAME=%s; ryu-manager mainapp.py; bash" &' % FILENAME)
+        if USE_XTERM:
+            os.system('xterm -e "export FILENAME=%s; ryu-manager mainapp.py; bash" &' % FILENAME)
+        else:
+            os.system('export FILENAME=%s; ryu-manager mainapp.py' % FILENAME)
     net.start()
     time.sleep(5)
     #CLI( net )
@@ -200,14 +209,14 @@ if __name__ == '__main__':
             server_host = net.get(connection[1])
             server_ip = server_host.IP()
             if 'IPERF_DURATION' in locals():
-                res = server_host.cmd (build_iperf_cmd(connection[2], connection[3], i, "", conn_time=IPERF_DURATION))
+                res = server_host.cmd (build_iperf_cmd(connection[2], connection[3], i, "", conn_time=IPERF_DURATION, use_xterm=USE_XTERM))
                 # time.sleep(2)
-                net.get(connection[0]).cmd(build_iperf_cmd(connection[2], connection[3], i, server_ip, conn_time=IPERF_DURATION))
+                net.get(connection[0]).cmd(build_iperf_cmd(connection[2], connection[3], i, server_ip, conn_time=IPERF_DURATION, use_xterm=USE_XTERM))
                 # time.sleep(2)
             else:
-                res = server_host.cmd(build_iperf_cmd(connection[2], connection[3], i, ""))
+                res = server_host.cmd(build_iperf_cmd(connection[2], connection[3], i, "", use_xterm=USE_XTERM))
                 #time.sleep(2)
-                net.get(connection[0]).cmd (build_iperf_cmd(connection[2], connection[3], i, server_ip))
+                net.get(connection[0]).cmd (build_iperf_cmd(connection[2], connection[3], i, server_ip, use_xterm=USE_XTERM))
                 #time.sleep(2)
             i+=1
         else:
