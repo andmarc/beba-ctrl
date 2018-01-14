@@ -3,7 +3,7 @@ import ryu.ofproto.ofproto_v1_3_parser as ofparser
 import pickle,time
 
 
-def add_flow(datapath, table_id, priority, match, actions, inst2=None, hard_timeout=0, idle_timeout=0):
+def add_flow(datapath, table_id, priority, match, actions=[], inst2=None, hard_timeout=0, idle_timeout=0):
     actions = filter(lambda x: x is not None, actions)
     if len(actions) > 0:
         inst = [ofparser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
