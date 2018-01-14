@@ -62,8 +62,8 @@ def get_hosts_info(net,topo):
     return d
 
 
-def build_iperf_cmd(proto, bw, i, srv_add, conn_time=600, use_xterm=False):
-    if False:
+def build_iperf_cmd(proto, bw, i, srv_add, conn_time=600, use_xterm=False, use_iperf=False):
+    if use_iperf:
         base_port = 3000
         s= "iperf3 " if proto == "TCP" else "iperf "
 
