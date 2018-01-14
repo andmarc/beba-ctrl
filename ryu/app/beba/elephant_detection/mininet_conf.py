@@ -194,7 +194,7 @@ if __name__ == '__main__':
         if USE_XTERM:
             os.system('xterm -e "export FILENAME=%s; ryu-manager mainapp.py; bash" &' % FILENAME)
         else:
-            os.system('export FILENAME=%s; ryu-manager mainapp.py' % FILENAME)
+            os.system('export FILENAME=%s; ryu-manager mainapp.py &' % FILENAME)
     net.start()
     time.sleep(5)
     #CLI( net )
