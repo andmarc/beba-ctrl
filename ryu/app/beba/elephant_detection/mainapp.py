@@ -67,28 +67,30 @@ class BebaSampleAndHold(app_manager.RyuApp):
         self.log = logging.getLogger('app.beba.sample_and_hold')
         hub.spawn(self.monitor)
 
-        # TM monitoring (HEAVY!!!) #####################################################################################
-        self.flow_stats_req_time_interval = 5
+        # TM monitoring is HEAVY!!!) ###################################################################################
+        self.TM_MONITORING = False
+        if self.TM_MONITORING:
+            self.flow_stats_req_time_interval = 5
 
-        self.latest_per_switch_flow_stats = {}  # latest per-switch per-flow stats (match, byte_count, duration_sec)
-        self.latest_per_switch_flow_rate = {}  # latest per-switch per-flow rate (bps)
-        # NB: we keep both min and max to capture pkt drops due to a bottleneck!
-        self.latest_flow_rate_min = {}  # aggregated minimum (among all switches) per-flow rate (bps)
-        self.latest_flow_rate_max = {}  # aggregated maximum (among all switches) per-flow rate (bps)
-        self.flow_rate_min_max_history = []  # history of aggregated min/max per-flow rate for each measurement round
-        # we define the same set of data structure reserved for rerouted flows
-        self.latest_per_switch_flow_stats_R = {}
-        self.latest_per_switch_flow_rate_R = {}
-        self.latest_flow_rate_min_R = {}
-        self.latest_flow_rate_max_R = {}
-        self.flow_rate_min_max_history_R = []
-        hub.spawn(self.monitor_all_flows_rate)
-        self.lock = threading.Lock()
-        ################################################################################################################
+            self.latest_per_switch_flow_stats = {}  # latest per-switch per-flow stats (match, byte_count, duration_sec)
+            self.latest_per_switch_flow_rate = {}  # latest per-switch per-flow rate (bps)
+            # NB: we keep both min and max to capture pkt drops due to a bottleneck!
+            self.latest_flow_rate_min = {}  # aggregated minimum (among all switches) per-flow rate (bps)
+            self.latest_flow_rate_max = {}  # aggregated maximum (among all switches) per-flow rate (bps)
+            self.flow_rate_min_max_history = []  # history of aggregated min/max per-flow rate for each measurement round
+            # we define the same set of data structure reserved for rerouted flows
+            self.latest_per_switch_flow_stats_R = {}
+            self.latest_per_switch_flow_rate_R = {}
+            self.latest_flow_rate_min_R = {}
+            self.latest_flow_rate_max_R = {}
+            self.flow_rate_min_max_history_R = []
+            hub.spawn(self.monitor_all_flows_rate)
+            self.lock = threading.Lock()
+            ############################################################################################################
 
-        # REST API
-        wsgi = kwargs['wsgi']
-        wsgi.register(SampleAndHoldRestController, {sample_and_hold_instance_name: self})
+            # REST API
+            wsgi = kwargs['wsgi']
+            wsgi.register(SampleAndHoldRestController, {sample_and_hold_instance_name: self})
 
 ########################################################################################################################
 
@@ -104,10 +106,11 @@ class BebaSampleAndHold(app_manager.RyuApp):
         self.CountTCPflows.configure_double_stateful_table(datapath)
         self.CountUDPflows.configure_double_stateful_table(datapath)
         self.Routing.initialize_routing()
-        self.latest_per_switch_flow_stats[datapath.id] = {}
-        self.latest_per_switch_flow_stats_R[datapath.id] = {}
-        self.latest_per_switch_flow_rate[datapath.id] = {}
-        self.latest_per_switch_flow_rate_R[datapath.id] = {}
+        if self.TM_MONITORING:
+            self.latest_per_switch_flow_stats[datapath.id] = {}
+            self.latest_per_switch_flow_stats_R[datapath.id] = {}
+            self.latest_per_switch_flow_rate[datapath.id] = {}
+            self.latest_per_switch_flow_rate_R[datapath.id] = {}
 
 ########################################################################################################################
 
@@ -158,82 +161,83 @@ class BebaSampleAndHold(app_manager.RyuApp):
 
     @set_ev_cls(ofp_event.EventOFPFlowStatsReply, MAIN_DISPATCHER)
     def flow_stats_reply_handler(self, ev):
-        if len(ev.msg.body) == 0:
-            return
-        dp_id = ev.msg.datapath.id
-        self.latest_per_switch_flow_rate[dp_id] = {}
-        self.latest_per_switch_flow_rate_R[dp_id] = {}
+        if self.TM_MONITORING:
+            if len(ev.msg.body) == 0:
+                return
+            dp_id = ev.msg.datapath.id
+            self.latest_per_switch_flow_rate[dp_id] = {}
+            self.latest_per_switch_flow_rate_R[dp_id] = {}
 
-        for flow_stat in ev.msg.body:
-            if flow_stat.priority == 0:
-                if self.match_str(flow_stat.match) in self.latest_per_switch_flow_stats[dp_id]:
+            for flow_stat in ev.msg.body:
+                if flow_stat.priority == 0:
+                    if self.match_str(flow_stat.match) in self.latest_per_switch_flow_stats[dp_id]:
 
-                    old_flow_stat = self.latest_per_switch_flow_stats[dp_id][self.match_str(flow_stat.match)]
-                    old_byte_count = old_flow_stat.byte_count
-                    old_duration_sec = old_flow_stat.duration_sec
+                        old_flow_stat = self.latest_per_switch_flow_stats[dp_id][self.match_str(flow_stat.match)]
+                        old_byte_count = old_flow_stat.byte_count
+                        old_duration_sec = old_flow_stat.duration_sec
 
-                    self.latest_per_switch_flow_stats[dp_id][self.match_str(flow_stat.match)] = flow_stat
+                        self.latest_per_switch_flow_stats[dp_id][self.match_str(flow_stat.match)] = flow_stat
 
-                    delta_bit = (flow_stat.byte_count - old_byte_count)*8
-                    delta_duration = flow_stat.duration_sec - old_duration_sec
+                        delta_bit = (flow_stat.byte_count - old_byte_count)*8
+                        delta_duration = flow_stat.duration_sec - old_duration_sec
 
-                    if delta_duration > 0:
-                        self.latest_per_switch_flow_rate[dp_id][self.match_str(flow_stat.match)] = 1.0*delta_bit/delta_duration
+                        if delta_duration > 0:
+                            self.latest_per_switch_flow_rate[dp_id][self.match_str(flow_stat.match)] = 1.0*delta_bit/delta_duration
+                    else:
+                        self.latest_per_switch_flow_stats[dp_id][self.match_str(flow_stat.match)] = flow_stat
                 else:
-                    self.latest_per_switch_flow_stats[dp_id][self.match_str(flow_stat.match)] = flow_stat
-            else:
-                # Flows with non-zero priority are re-routed flows
-                if self.match_str(flow_stat.match) in self.latest_per_switch_flow_stats_R[dp_id]:
+                    # Flows with non-zero priority are re-routed flows
+                    if self.match_str(flow_stat.match) in self.latest_per_switch_flow_stats_R[dp_id]:
 
-                    old_flow_stat = self.latest_per_switch_flow_stats_R[dp_id][self.match_str(flow_stat.match)]
-                    old_byte_count = old_flow_stat.byte_count
-                    old_duration_sec = old_flow_stat.duration_sec
+                        old_flow_stat = self.latest_per_switch_flow_stats_R[dp_id][self.match_str(flow_stat.match)]
+                        old_byte_count = old_flow_stat.byte_count
+                        old_duration_sec = old_flow_stat.duration_sec
 
-                    self.latest_per_switch_flow_stats_R[dp_id][self.match_str(flow_stat.match)] = flow_stat
+                        self.latest_per_switch_flow_stats_R[dp_id][self.match_str(flow_stat.match)] = flow_stat
 
-                    delta_bit = (flow_stat.byte_count - old_byte_count)*8
-                    delta_duration = flow_stat.duration_sec - old_duration_sec
+                        delta_bit = (flow_stat.byte_count - old_byte_count)*8
+                        delta_duration = flow_stat.duration_sec - old_duration_sec
 
-                    if delta_duration > 0:
-                        self.latest_per_switch_flow_rate_R[dp_id][self.match_str(flow_stat.match)] = 1.0*delta_bit/delta_duration
-                else:
-                    self.latest_per_switch_flow_stats_R[dp_id][self.match_str(flow_stat.match)] = flow_stat
-
-        if len(self.latest_per_switch_flow_rate[dp_id]) > 0:
-            # green_msg('TM from datapath %d' % dp_id)
-            for flow in self.latest_per_switch_flow_rate[dp_id]:
-                # print flow, bps_to_human_string(self.latest_per_switch_flow_rate[dp_id][flow])
-                with self.lock:
-                    if flow not in self.latest_flow_rate_max:
-                        self.latest_flow_rate_max[flow] = self.latest_per_switch_flow_rate[dp_id][flow]
+                        if delta_duration > 0:
+                            self.latest_per_switch_flow_rate_R[dp_id][self.match_str(flow_stat.match)] = 1.0*delta_bit/delta_duration
                     else:
-                        # The global TM contains the worst case rate of the current measurement round
-                        self.latest_flow_rate_max[flow] = max(self.latest_per_switch_flow_rate[dp_id][flow], self.latest_flow_rate_max[flow])
-                with self.lock:
-                    if flow not in self.latest_flow_rate_min:
-                        self.latest_flow_rate_min[flow] = self.latest_per_switch_flow_rate[dp_id][flow]
-                    else:
-                        # The global TM contains the worst case rate of the current measurement round
-                        self.latest_flow_rate_min[flow] = min(self.latest_per_switch_flow_rate[dp_id][flow], self.latest_flow_rate_min[flow])
-            # print
+                        self.latest_per_switch_flow_stats_R[dp_id][self.match_str(flow_stat.match)] = flow_stat
 
-        if len(self.latest_per_switch_flow_rate_R[dp_id]) > 0:
-            # green_msg('TM from datapath %d' % dp_id)
-            for flow in self.latest_per_switch_flow_rate_R[dp_id]:
-                # print flow, bps_to_human_string(self.latest_per_switch_flow_rate_R[dp_id][flow])
-                with self.lock:
-                    if flow not in self.latest_flow_rate_max_R:
-                        self.latest_flow_rate_max_R[flow] = self.latest_per_switch_flow_rate_R[dp_id][flow]
-                    else:
-                        # The global TM contains the worst case rate of the current measurement round
-                        self.latest_flow_rate_max_R[flow] = max(self.latest_per_switch_flow_rate_R[dp_id][flow], self.latest_flow_rate_max_R[flow])
-                with self.lock:
-                    if flow not in self.latest_flow_rate_min_R:
-                        self.latest_flow_rate_min_R[flow] = self.latest_per_switch_flow_rate_R[dp_id][flow]
-                    else:
-                        # The global TM contains the worst case rate of the current measurement round
-                        self.latest_flow_rate_min_R[flow] = min(self.latest_per_switch_flow_rate_R[dp_id][flow], self.latest_flow_rate_min_R[flow])
-            # print
+            if len(self.latest_per_switch_flow_rate[dp_id]) > 0:
+                # green_msg('TM from datapath %d' % dp_id)
+                for flow in self.latest_per_switch_flow_rate[dp_id]:
+                    # print flow, bps_to_human_string(self.latest_per_switch_flow_rate[dp_id][flow])
+                    with self.lock:
+                        if flow not in self.latest_flow_rate_max:
+                            self.latest_flow_rate_max[flow] = self.latest_per_switch_flow_rate[dp_id][flow]
+                        else:
+                            # The global TM contains the worst case rate of the current measurement round
+                            self.latest_flow_rate_max[flow] = max(self.latest_per_switch_flow_rate[dp_id][flow], self.latest_flow_rate_max[flow])
+                    with self.lock:
+                        if flow not in self.latest_flow_rate_min:
+                            self.latest_flow_rate_min[flow] = self.latest_per_switch_flow_rate[dp_id][flow]
+                        else:
+                            # The global TM contains the worst case rate of the current measurement round
+                            self.latest_flow_rate_min[flow] = min(self.latest_per_switch_flow_rate[dp_id][flow], self.latest_flow_rate_min[flow])
+                # print
+
+            if len(self.latest_per_switch_flow_rate_R[dp_id]) > 0:
+                # green_msg('TM from datapath %d' % dp_id)
+                for flow in self.latest_per_switch_flow_rate_R[dp_id]:
+                    # print flow, bps_to_human_string(self.latest_per_switch_flow_rate_R[dp_id][flow])
+                    with self.lock:
+                        if flow not in self.latest_flow_rate_max_R:
+                            self.latest_flow_rate_max_R[flow] = self.latest_per_switch_flow_rate_R[dp_id][flow]
+                        else:
+                            # The global TM contains the worst case rate of the current measurement round
+                            self.latest_flow_rate_max_R[flow] = max(self.latest_per_switch_flow_rate_R[dp_id][flow], self.latest_flow_rate_max_R[flow])
+                    with self.lock:
+                        if flow not in self.latest_flow_rate_min_R:
+                            self.latest_flow_rate_min_R[flow] = self.latest_per_switch_flow_rate_R[dp_id][flow]
+                        else:
+                            # The global TM contains the worst case rate of the current measurement round
+                            self.latest_flow_rate_min_R[flow] = min(self.latest_per_switch_flow_rate_R[dp_id][flow], self.latest_flow_rate_min_R[flow])
+                # print
 
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def port_stats_reply_handler(self, event):
