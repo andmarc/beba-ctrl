@@ -2,11 +2,11 @@ import os
 
 # It creates M CBR flows and N elastic flows with a dummy topology with just 2 switches and 1 link
 
-M_RANGE = [0]
-N_RANGE = [2, 4]
-IPERF_DURATION = 30  # s
-ACCESS_LINK_CAPACITY = 10  # Mbps
-CORE_LINK_CAPACITY = 10  # Mbps
+M_RANGE = range(0, 20+1)
+N_RANGE = range(1, 20+1)
+IPERF_DURATION = 120  # s
+ACCESS_LINK_CAPACITY = 50  # Mbps
+CORE_LINK_CAPACITY = 50  # Mbps
 CBR = '2M'
 
 for M in M_RANGE:

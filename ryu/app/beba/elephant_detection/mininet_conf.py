@@ -43,7 +43,7 @@ class MyTopo( Topo ):
         for node in nodes_set:
             self.addSwitch(node) if is_switch(node) else self.addHost(node)
         for el in C_list:
-            self.addLink(el[0], el[1], bw=int(el[2]), max_queue_size=10, use_htb=True)
+            self.addLink(el[0], el[1], bw=int(el[2]), max_queue_size=1000, use_htb=True)
             port_tuple = self.port(el[0], el[1])
             G.add_edge(el[0], el[1], bw=int(el[2]), port=port_tuple[0])
             G.add_edge(el[1], el[0], bw= int(el[2]), port= port_tuple[1])
@@ -117,7 +117,7 @@ if __name__ == '__main__':
     load_topo_info(sys.argv[1])
 
     # Set to True if ryu is running inside a VM
-    REMOTE_CTRL = True
+    REMOTE_CTRL = False
 
     USE_XTERM = False
 
