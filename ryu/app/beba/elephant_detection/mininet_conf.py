@@ -193,9 +193,9 @@ if __name__ == '__main__':
                 'sshpass -p mininet ssh -X -p 4567 root@0 cd /home/mininet/beba-ctrl/ryu/app/beba/elephant_detection/\;export\ P_SAMPLE=%s\;export\ FILENAME=%s\;ryu-manager\ mainapp.py &' % (P_SAMPLE, FILENAME))
     else:
         if USE_XTERM:
-            os.system('xterm -e "export P_SAMPLE,=%s; export FILENAME=%s; ryu-manager mainapp.py; bash" &' % (P_SAMPLE, FILENAME))
+            os.system('xterm -e "export P_SAMPLE=%s; export FILENAME=%s; ryu-manager mainapp.py; bash" &' % (P_SAMPLE, FILENAME))
         else:
-            os.system('export P_SAMPLE,=%s; export FILENAME=%s; ryu-manager mainapp.py &' % (P_SAMPLE, FILENAME))
+            os.system('export P_SAMPLE=%s; export FILENAME=%s; ryu-manager mainapp.py &' % (P_SAMPLE, FILENAME))
     net.start()
     time.sleep(5)
     #CLI( net )
