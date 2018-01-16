@@ -31,7 +31,9 @@ class BebaSampleAndHold(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super(BebaSampleAndHold, self).__init__(*args, **kwargs)
-        self.sample_probability = 1
+        self.sample_probability = float(os.environ['P_SAMPLE']) if 'P_SAMPLE' in os.environ else 1
+        self.log = logging.getLogger('app.beba.sample_and_hold')
+        self.log.info('Sampling probability %f' % self.sample_probability)
         self.stats_req_time_interval = 10
         self.switch_window_time_interval = self.stats_req_time_interval - 0.1
         self.hh_threshold = 500000
@@ -64,7 +66,6 @@ class BebaSampleAndHold(app_manager.RyuApp):
                                                         time_interval=self.switch_window_time_interval,
                                                         hh_threshold=self.hh_threshold)
 
-        self.log = logging.getLogger('app.beba.sample_and_hold')
         hub.spawn(self.monitor)
 
         # TM monitoring is HEAVY!!!) ###################################################################################

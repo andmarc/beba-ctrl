@@ -22,7 +22,7 @@ class colorgen:
             raise StopIteration()
 
 
-def plot(results, M, N, CORE_LINK_CAPACITY, CBR):
+def plot(results, M, N, CORE_LINK_CAPACITY, CBR, P_SAMPLE):
     links = set(sum(map(lambda x: x.keys(), results), []))
     print links
     for link in links:
@@ -46,7 +46,7 @@ def plot(results, M, N, CORE_LINK_CAPACITY, CBR):
 
         # add some text for labels, title and axes ticks
         ax.set_ylabel('Rate [Mbps]')
-        ax.set_title('Elephant flows on link %s @%dMbps (%d CBR @%sbps, %d elastic)' % (link, CORE_LINK_CAPACITY, M, CBR, N))
+        ax.set_title('Elephant flows on link %s @%dMbps (%d CBR @%sbps, %d elastic) p_sample %s' % (link, CORE_LINK_CAPACITY, M, CBR, N, P_SAMPLE))
         ax.set_xticks(ind + 2 * width)
         ax.set_xticklabels(range(len(flows_measures)))
         ax.set_xlim([ax.get_xlim()[0], len(flows_measures) + 1])
@@ -65,6 +65,10 @@ for file in glob.glob('*.txt'):
     with open(file) as f:
         content = f.readlines()
         results = [eval(content[2*i + 1].strip()) for i in range(len(content)/2)]
-        M, N, CORE_LINK_CAPACITY = map(int, file.split('.')[-5: -2])
-        CBR = file.split('.')[-2]
-        plot(results, M, N, CORE_LINK_CAPACITY, CBR)
+        param = file.split('.')
+        param = param[:5] + [param[-4]+'.'+param[-3]] +param[-2:]
+        M, N = map(int, param[-6: -4])
+        CORE_LINK_CAPACITY = int(param[-4])
+        P_SAMPLE = param[-3]
+        CBR = param[-2]
+        plot(results, M, N, CORE_LINK_CAPACITY, CBR, P_SAMPLE)

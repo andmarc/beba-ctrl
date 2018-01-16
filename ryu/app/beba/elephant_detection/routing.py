@@ -158,7 +158,10 @@ class Routing():
                 #for occ in (rx_occ, tx_occ):
                 if occ > self.congestion_thresh:
                     link_ep = (link[0], link[1]) if occ == tx_occ else (link[1], link[0])
-                    res, all_elephants_of_saturated_links[link] = self.get_elephant_by_link(flow_stats_history, link_ep)
+                    try:
+                        res, all_elephants_of_saturated_links[link] = self.get_elephant_by_link(flow_stats_history, link_ep)
+                    except TypeError:
+                        res = None
                     if res is not None:
                         new_forwarding_list.update(res)
                 topo1[link[0]][link[1]]["C_res"] = (100 - tx_occ)/100 *\

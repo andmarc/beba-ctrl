@@ -122,7 +122,8 @@ if __name__ == '__main__':
     USE_XTERM = False
 
     if len(sys.argv) > 2:
-        M, N, IPERF_DURATION, CORE_LINK_CAPACITY, ACCESS_LINK_CAPACITY = map(int, sys.argv[2:-1])
+        M, N, IPERF_DURATION, CORE_LINK_CAPACITY, ACCESS_LINK_CAPACITY = map(int, sys.argv[2:-2])
+        P_SAMPLE = sys.argv[-2]
         CBR = sys.argv[-1]
 
         # override topology
@@ -139,7 +140,7 @@ if __name__ == '__main__':
         # print C_list
         # print endpoint_list
 
-        FILENAME = '%d.%d.%d.%s.txt' % (M, N, CORE_LINK_CAPACITY, CBR)
+        FILENAME = '%d.%d.%d.%s.%s.txt' % (M, N, CORE_LINK_CAPACITY, P_SAMPLE, CBR)
     else:
         FILENAME = 'custom.txt'
 
@@ -186,15 +187,15 @@ if __name__ == '__main__':
     #print 'Start Ryu'
     if REMOTE_CTRL:
         if USE_XTERM:
-            os.system('sshpass -p mininet ssh -X -p 4567 root@0 cd /home/mininet/beba-ctrl/ryu/app/beba/elephant_detection/\;xterm -e \"export\ FILENAME=%s\;ryu-manager\ mainapp.py\;bash\" &' % FILENAME)
+            os.system('sshpass -p mininet ssh -X -p 4567 root@0 cd /home/mininet/beba-ctrl/ryu/app/beba/elephant_detection/\;xterm -e \"export\ P_SAMPLE=%s\;export\ FILENAME=%s\;ryu-manager\ mainapp.py\;bash\" &' % (P_SAMPLE, FILENAME))
         else:
             os.system(
-                'sshpass -p mininet ssh -X -p 4567 root@0 cd /home/mininet/beba-ctrl/ryu/app/beba/elephant_detection/\;export\ FILENAME=%s\;ryu-manager\ mainapp.py &' % FILENAME)
+                'sshpass -p mininet ssh -X -p 4567 root@0 cd /home/mininet/beba-ctrl/ryu/app/beba/elephant_detection/\;export\ P_SAMPLE=%s\;export\ FILENAME=%s\;ryu-manager\ mainapp.py &' % (P_SAMPLE, FILENAME))
     else:
         if USE_XTERM:
-            os.system('xterm -e "export FILENAME=%s; ryu-manager mainapp.py; bash" &' % FILENAME)
+            os.system('xterm -e "export P_SAMPLE,=%s; export FILENAME=%s; ryu-manager mainapp.py; bash" &' % (P_SAMPLE, FILENAME))
         else:
-            os.system('export FILENAME=%s; ryu-manager mainapp.py &' % FILENAME)
+            os.system('export P_SAMPLE,=%s; export FILENAME=%s; ryu-manager mainapp.py &' % (P_SAMPLE, FILENAME))
     net.start()
     time.sleep(5)
     #CLI( net )
